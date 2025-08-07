@@ -1,0 +1,202 @@
+{
+  "index_settings": {
+    "docstore_compression": "lz4",
+    "docstore_blocksize": 16384
+  },
+  "segments": [
+    {
+      "segment_id": "cf0ec271-2ae2-49d5-abfb-cf8071abefff",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "bc3fceb6-1413-4a0d-9469-ec3dc05f728f",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "3a6e6ab8-6294-4d76-8c1a-58ca6eb272c2",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "d392a55f-63a0-4ba8-b0e7-d1ceb04d7e26",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "c0a6acce-3b71-40d9-a3b9-ce056e1fed8d",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "f5ba31b3-d470-4b36-9218-984d4a13bc9b",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "8e13a28b-bbb5-4a54-b0db-dbaee0a7faf8",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "9875b87f-646c-44b1-9d80-99d600d05a20",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "4ccfd104-6e95-4d48-bf11-7cf7ff2286e4",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "28f5bae8-bde9-4537-9ac1-c50269efcc66",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "3512f72f-ce40-4c1e-b865-cd3f25d4c902",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "b2f4b327-e0ab-4eb4-a001-680a1af4f6b9",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "efb2887b-182d-4f10-96ae-9d6c7a94d893",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "304245ba-532e-4493-89c6-720fd239c617",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "82d52101-5fc4-466e-bbfe-02ba67edcd2f",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "6ce1973e-232c-4282-a6c2-d86c92a66418",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "b6e643ec-56ef-46ce-90f0-ed7b714532e9",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "806d8e23-4a0b-4e9c-99c6-74596805074e",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "b78874e6-c392-495f-9471-dede8d250d77",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "24d69271-c53f-4ffd-b0a2-058b2d7e0c22",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "ed8c1ed8-6f99-4233-945e-9643f7c0d716",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "36d41b2c-d323-4cd6-bcdc-be9f4293c25a",
+      "max_doc": 2,
+      "deletes": null
+    },
+    {
+      "segment_id": "f4cce5da-f614-4e58-a1a2-7da3a3197156",
+      "max_doc": 1,
+      "deletes": null
+    },
+    {
+      "segment_id": "ca98f62f-c846-49ef-bd18-30b8e0e71f04",
+      "max_doc": 1,
+      "deletes": null
+    },
+    {
+      "segment_id": "be3ffbd5-fad7-4943-9a76-f745b4ceaedc",
+      "max_doc": 1,
+      "deletes": null
+    },
+    {
+      "segment_id": "85070bde-eb78-4ba0-92c1-e7b1a2808582",
+      "max_doc": 1,
+      "deletes": null
+    },
+    {
+      "segment_id": "9287b715-84ca-4107-b1bb-0d34ccb950f1",
+      "max_doc": 1,
+      "deletes": null
+    },
+    {
+      "segment_id": "9ca2ace0-2c91-4302-afd6-663b596c6726",
+      "max_doc": 1,
+      "deletes": null
+    },
+    {
+      "segment_id": "7a30b0af-e2ca-4268-94b7-cc7afb8dc59e",
+      "max_doc": 1,
+      "deletes": null
+    },
+    {
+      "segment_id": "be0a4d99-c41c-4138-a34e-47d306aafb56",
+      "max_doc": 1,
+      "deletes": null
+    },
+    {
+      "segment_id": "ada15d50-b54b-434f-954c-6eecc1214c63",
+      "max_doc": 1,
+      "deletes": null
+    },
+    {
+      "segment_id": "5befabb3-7bcf-4d6d-9cdf-0bfa0d763924",
+      "max_doc": 1,
+      "deletes": null
+    },
+    {
+      "segment_id": "2092db77-b92c-41ea-97fc-69c761368308",
+      "max_doc": 1,
+      "deletes": null
+    }
+  ],
+  "schema": [
+    {
+      "name": "path",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "default"
+        },
+        "stored": true,
+        "fast": false
+      }
+    },
+    {
+      "name": "content",
+      "type": "text",
+      "options": {
+        "indexing": {
+          "record": "position",
+          "fieldnorms": true,
+          "tokenizer": "jieba"
+        },
+        "stored": true,
+        "fast": false
+      }
+    }
+  ],
+  "opstamp": 88
+}
