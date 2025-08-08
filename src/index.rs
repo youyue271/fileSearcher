@@ -1,8 +1,7 @@
 use crate::app_message::{AppMessage, IndexMessage};
+use crate::file_utils;
 use anyhow::Result;
 use crossbeam_channel::Sender;
-use docx_rust::document::{BodyContent, ParagraphContent, RunContent};
-use docx_rust::DocxFile;
 use std::path::Path;
 use tantivy::directory::MmapDirectory;
 use tantivy::schema::*;
@@ -12,29 +11,6 @@ use tantivy_jieba::JiebaTokenizer;
 use walkdir::WalkDir;
 
 const INDEX_DIR: &str = "tantivy_index";
-
-// Docx文本提取
-fn extract_text_from_docx(path: &Path) -> Result<String> {
-    let docx = DocxFile::from_file(path)?;
-    let mut docx = docx.parse()?;
-    let mut text = String::new();
-
-    for content in std::mem::take(&mut docx.document.body.content) {
-        if let BodyContent::Paragraph(p) = content {
-            for run in p.content {
-                if let ParagraphContent::Run(r) = run {
-                    for text_content in r.content {
-                        if let RunContent::Text(t) = text_content {
-                            text.push_str(&t.text);
-                        }
-                    }
-                }
-            }
-            text.push('\n');
-        }
-    }
-    Ok(text)
-}
 
 pub fn index_directory(path: &Path, sender: Sender<AppMessage>) -> Result<()> {
     println!("Starting indexing process for: {:?}", path);
@@ -86,7 +62,7 @@ pub fn index_directory(path: &Path, sender: Sender<AppMessage>) -> Result<()> {
         if let Some(extension) = file_path.extension().and_then(|s| s.to_str()) {
             if extension.eq_ignore_ascii_case("docx") {
                 println!("Indexing: {:?}", file_path);
-                match extract_text_from_docx(file_path) {
+                match file_utils::read_file_content(file_path) {
                     Ok(content) => {
                         if !content.is_empty() {
                             index_writer.add_document(doc!(

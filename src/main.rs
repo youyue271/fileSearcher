@@ -15,7 +15,8 @@ mod app_state;
 mod index;
 // 搜索模块
 mod search;
-
+mod windows;
+mod file_utils;
 // 信息传递
 
 // APP结构体定义
@@ -29,6 +30,7 @@ struct MyApp {
     state: AppState,
     sender: Sender<AppMessage>,
     receiver: Receiver<AppMessage>,
+    windows: Vec<windows::AppWindow>,
 }
 
 // APP结构体中Default接口的定义
@@ -42,14 +44,27 @@ impl Default for MyApp {
             state: AppState::default(),
             sender,
             receiver,
+            windows: Vec::new(),
         }
     }
+}
+
+enum Action {
+    None,
+    OpenContext(String),
+    OpenFile(String),
 }
 
 impl eframe::App for MyApp {
     // 窗口更新函数
     // 消息处理 异常处理+不阻塞
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // --- Draw Windows ---
+        for window in self.windows.iter_mut() {
+            window.draw(ctx, &self.search_query);
+        }
+        self.windows.retain(|w| *w.is_open());
+
         // 每次窗口更新，都会首先检查是否收到新消息
         if let Ok(msg) = self.receiver.try_recv() {
             // 信息类型的模式匹配
@@ -187,6 +202,8 @@ impl eframe::App for MyApp {
 
         // Central Panel for Results
         egui::CentralPanel::default().show(ctx, |ui| {
+            let mut action = Action::None;
+
             // 结果部分
             ui.heading("搜索结果");
             ui.separator();
@@ -196,19 +213,92 @@ impl eframe::App for MyApp {
                 }
 
                 for result in &self.search_results {
-                    egui::Frame::group(ui.style()).show(ui, |ui| {
-                        // 文本按钮
-                        let button = egui::Button::new(egui::RichText::new(&result.path).strong()).frame(false);
-                        if ui.add(button).double_clicked() {
-                            if let Err(e) = opener::open(&result.path) {
-                                eprintln!("Failed to open file: {}", e);
-                            }
+                    let item_response = egui::Frame::group(ui.style())
+                        .show(ui, |ui| {
+                            // 文本按钮
+                            // let button =
+                            //     egui::Button::new(egui::RichText::new(&result.path).strong())
+                            //         .frame(false);
+                            // if ui.add(button).double_clicked() {
+                            //     action = Action::OpenFile(result.path.clone());
+                            // }
+                            let text = egui::RichText::new(&result.path).strong();
+                            ui.label(text);
+                            // ui.label(egui::RichText::new(&result.snippet_html).small());
+                            ui.horizontal_wrapped(|ui| {
+                                ui.spacing_mut().item_spacing.x = 0.0;
+                                ui.style_mut().override_text_style = Some(egui::TextStyle::Small);
+                                let parts = result.snippet_html.split("<b>");
+                                let mut first = true;
+                                for part in parts {
+                                    if first && part.is_empty() {
+                                        first = false;
+                                        continue;
+                                    }
+                                    if let Some(highlighted_part) = part.find("</b>") {
+                                        let (highlight, rest) = part.split_at(highlighted_part);
+                                        ui.label(
+                                            egui::RichText::new(highlight)
+                                                .color(egui::Color32::RED),
+                                        );
+                                        ui.label(&rest[4..]); // a little ugly
+                                    } else {
+                                        ui.label(part);
+                                    }
+                                    first = false;
+                                }
+                            });
+                        })
+                        .response;
+
+                    item_response.context_menu(|ui| {
+                        if ui.button("打开文件").clicked() {
+                            action = Action::OpenFile(result.path.clone());
+                            ui.close_menu();
                         }
-                        ui.label(egui::RichText::new(&result.snippet_html).small());
+                        if ui.button("预览关键词上下文").clicked() {
+                            action = Action::OpenContext(result.path.clone());
+                            ui.close_menu();
+                        }
+                        if ui.button("打开文件所在文件夹").clicked() {
+                            if let Some(parent) = std::path::Path::new(&result.path).parent() {
+                                if let Err(e) = opener::open(parent) {
+                                    eprintln!("Failed to open folder: {}", e);
+                                }
+                            }
+                            ui.close_menu();
+                        }
                     });
+
                     ui.separator();
                 }
             });
+
+            // Perform the action after the loop
+            if let Action::OpenFile(path) = action {
+                if let Err(e) = opener::open(&path) {
+                    eprintln!("Failed to open file: {}", e);
+                }
+            } else if let Action::OpenContext(path) = action {
+                if self
+                    .windows
+                    .iter()
+                    .any(|w| matches!(w, windows::AppWindow::Context(v) if v.path == path))
+                {
+                    println!("Window for {} is already open.", &path);
+                } else {
+                    match file_utils::read_file_content(std::path::Path::new(&path)) {
+                        Ok(content) => {
+                            self.windows.push(windows::AppWindow::Context(
+                                windows::context_view::ContextView::new(path, content),
+                            ));
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to read file for context view: {}", e);
+                        }
+                    }
+                }
+            }
         });
 
         // Floating Settings Button
@@ -242,7 +332,7 @@ impl eframe::App for MyApp {
                 );
             });
 
-        if self.state != AppState::Idle {
+        if self.state != AppState::Idle || !self.windows.is_empty() {
             ctx.request_repaint();
         }
     }
