@@ -1,0 +1,17 @@
+[package]
+name = "mytxt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.82"
+docx-rust = "0.1.10"
+tantivy = "0.24.0"
+walkdir = "2.5.0"
+tantivy-jieba = "0.16.0"
+opener = "0.7.1"
+
+# GUI Dependencies
+eframe = "0.27.2"
+rfd = "0.14.1"
+crossbeam-channel = "0.5.12"
