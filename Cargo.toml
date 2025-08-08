@@ -1,6 +1,6 @@
 [package]
 name = "mytxt"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
@@ -15,4 +15,4 @@ opener = "0.7.1"
 eframe = "0.27.2"
 rfd = "0.14.1"
 crossbeam-channel = "0.5.12"
-html-escape = "0.2.13"
+
