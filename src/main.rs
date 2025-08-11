@@ -1,39 +1,50 @@
 #![windows_subsystem = "windows"]
 
-use crate::app_message::{AppMessage, IndexMessage, SearchMessage};
+// Re-organize use statements for clarity
 use crate::app_state::AppState;
-use crate::search::SearchResult;
+use crate::config::AppSettings;
+use crate::gui::settings_view::SettingsView;
+use crate::gui::AppWindow;
+use crate::message::{AppMessage, IndexMessage, SearchMessage, SettingsMessage};
+use crate::search::query::SearchResult;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use eframe::egui;
 use std::path::PathBuf;
 use std::thread;
 
 // Application-specific modules
-mod app_message;
 mod app_state;
-// 索引模块
-mod index;
-// 搜索模块
+mod config;
+mod gui;
+mod message;
 mod search;
-mod windows;
-mod file_utils;
-// 信息传递
+mod utils;
 
 // APP结构体定义
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(default)]
 struct MyApp {
     // 指定索引目录
+    #[serde(skip)]
     index_path: Option<PathBuf>,
     // 指定搜索关键词
+    #[serde(skip)]
     search_query: String,
     // 返回的搜索结果
+    #[serde(skip)]
     search_results: Vec<SearchResult>,
+    #[serde(skip)]
     state: AppState,
+    settings: AppSettings,
+
+    #[serde(skip)]
     sender: Sender<AppMessage>,
+    #[serde(skip)]
     receiver: Receiver<AppMessage>,
-    windows: Vec<windows::AppWindow>,
+    #[serde(skip)]
+    windows: Vec<AppWindow>,
 }
 
-// APP结构体中Default接口的定义
 impl Default for MyApp {
     fn default() -> Self {
         let (sender, receiver) = unbounded();
@@ -42,10 +53,28 @@ impl Default for MyApp {
             search_query: String::new(),
             search_results: Vec::new(),
             state: AppState::default(),
+            settings: AppSettings::default(),
             sender,
             receiver,
             windows: Vec::new(),
         }
+    }
+}
+
+impl MyApp {
+    fn new(cc: &eframe::CreationContext) -> Self {
+        // Load previous app state (if any).
+        let mut app: Self = if let Some(storage) = cc.storage {
+            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
+        } else {
+            Default::default()
+        };
+
+        let (sender, receiver) = unbounded();
+        app.sender = sender;
+        app.receiver = receiver;
+
+        app
     }
 }
 
@@ -59,6 +88,8 @@ impl eframe::App for MyApp {
     // 窗口更新函数
     // 消息处理 异常处理+不阻塞
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.set_visuals(self.settings.get_visuals());
+
         // --- Draw Windows ---
         for window in self.windows.iter_mut() {
             window.draw(ctx, &self.search_query);
@@ -91,8 +122,17 @@ impl eframe::App for MyApp {
                     }
                     SearchMessage::Error(e) => {
                         eprintln!("Search Error: {}", e);
-                        self.search_results = vec![SearchResult { path: e, snippet_html: "".to_string() }];
+                        self.search_results = vec![SearchResult {
+                            path: e,
+                            snippet_html: "".to_string(),
+                        }];
                         self.state = AppState::Idle;
+                    }
+                },
+                AppMessage::Settings(settings_msg) => match settings_msg {
+                    // 主题变更
+                    SettingsMessage::ThemeChanged(theme) => {
+                        self.settings.theme = theme;
                     }
                 },
             }
@@ -113,12 +153,18 @@ impl eframe::App for MyApp {
                 ui.collapsing("索引", |ui| {
                     //  “检查 self.index_path。如果它为空，path_str 就是 "请选择目录"。如果它有值，就把它转换成字符串；如果转换失败，path_str 就是个空字符串。”
                     // 太tm优雅了
-                    let path_str = self.index_path.as_ref().map_or("请选择目录", |p| p.to_str().unwrap_or_default());
+                    let path_str = self
+                        .index_path
+                        .as_ref()
+                        .map_or("请选择目录", |p| p.to_str().unwrap_or_default());
                     ui.label(format!("目标目录: {}", path_str));
 
                     // 添加状态驱动的组件
                     // 返回值为组件状态
-                    if ui.add_enabled(self.state == AppState::Idle, egui::Button::new("选择目录")).clicked() {
+                    if ui
+                        .add_enabled(self.state == AppState::Idle, egui::Button::new("选择目录"))
+                        .clicked()
+                    {
                         // 检测输入框是否有东西
                         // 有东西就赋值给索引路径
                         // 执行顺序为 先打开选择文件对话框 然后赋值
@@ -129,9 +175,13 @@ impl eframe::App for MyApp {
 
                     // awesome
                     // 先看有索引路径，再能让索引按钮能点
-                    let index_button_enabled = self.index_path.is_some() && self.state == AppState::Idle;
+                    let index_button_enabled =
+                        self.index_path.is_some() && self.state == AppState::Idle;
                     // 索引按钮
-                    if ui.add_enabled(index_button_enabled, egui::Button::new("开始索引")).clicked() {
+                    if ui
+                        .add_enabled(index_button_enabled, egui::Button::new("开始索引"))
+                        .clicked()
+                    {
                         // 转换状态
                         // 方便加载索引动画
                         self.state = AppState::Indexing { progress: 0.0 };
@@ -144,8 +194,12 @@ impl eframe::App for MyApp {
                         // Move的存在可以让此线程单独获得所有变量的所有权，因为update后，所有变量都可能会销毁，但索引可能会继续进行
                         // 内存安全
                         thread::spawn(move || {
-                            if let Err(e) = index::index_directory(&path, sender.clone()) {
-                                sender.send(AppMessage::Index(IndexMessage::Error(e.to_string()))).unwrap();
+                            if let Err(e) =
+                                crate::search::indexer::index_directory(&path, sender.clone())
+                            {
+                                sender
+                                    .send(AppMessage::Index(IndexMessage::Error(e.to_string())))
+                                    .unwrap();
                             }
                         });
                     }
@@ -166,15 +220,21 @@ impl eframe::App for MyApp {
                     });
 
                     // 搜索按钮
-                    let search_button_enabled = !self.search_query.is_empty() && self.state == AppState::Idle;
-                    if ui.add_enabled(search_button_enabled, egui::Button::new("搜索")).clicked() {
+                    let search_button_enabled =
+                        !self.search_query.is_empty() && self.state == AppState::Idle;
+                    if ui
+                        .add_enabled(search_button_enabled, egui::Button::new("搜索"))
+                        .clicked()
+                    {
                         self.state = AppState::Searching;
                         let query = self.search_query.clone();
                         let sender = self.sender.clone();
                         // 多线程搜索
                         thread::spawn(move || {
-                            if let Err(e) = search::search(&query, sender.clone()) {
-                                sender.send(AppMessage::Search(SearchMessage::Error(e.to_string()))).unwrap();
+                            if let Err(e) = crate::search::query::search(&query, sender.clone()) {
+                                sender
+                                    .send(AppMessage::Search(SearchMessage::Error(e.to_string())))
+                                    .unwrap();
                             }
                         });
                     }
@@ -283,14 +343,14 @@ impl eframe::App for MyApp {
                 if self
                     .windows
                     .iter()
-                    .any(|w| matches!(w, windows::AppWindow::Context(v) if v.path == path))
+                    .any(|w| matches!(w, AppWindow::Context(v) if v.path == path))
                 {
                     println!("Window for {} is already open.", &path);
                 } else {
-                    match file_utils::read_file_content(std::path::Path::new(&path)) {
+                    match crate::utils::file_utils::read_file_content(std::path::Path::new(&path)) {
                         Ok(content) => {
-                            self.windows.push(windows::AppWindow::Context(
-                                windows::context_view::ContextView::new(path, content),
+                            self.windows.push(AppWindow::Context(
+                                crate::gui::context_view::ContextView::new(path, content),
                             ));
                         }
                         Err(e) => {
@@ -311,8 +371,14 @@ impl eframe::App for MyApp {
 
                 // Check for interaction
                 if response.clicked() {
-                    println!("Settings button clicked!");
-                    // Future: Open settings window or panel
+                    // check if window already open
+                    let is_already_open =
+                        self.windows.iter().any(|w| matches!(w, AppWindow::Settings(_)));
+
+                    if !is_already_open {
+                        let view = SettingsView::new(self.sender.clone(), self.settings.theme);
+                        self.windows.push(AppWindow::Settings(view));
+                    }
                 }
 
                 // Draw the button background
@@ -335,6 +401,10 @@ impl eframe::App for MyApp {
         if self.state != AppState::Idle || !self.windows.is_empty() {
             ctx.request_repaint();
         }
+    }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, eframe::APP_KEY, self);
     }
 }
 
@@ -360,9 +430,12 @@ fn main() -> Result<(), eframe::Error> {
             if let Ok(font_data) = std::fs::read("C:\\Windows\\Fonts\\msyh.ttc") {
                 // 将msyh加入字体清单
                 // 前面的msyh是自己起的名
-                fonts.font_data.insert("msyh".to_owned(), egui::FontData::from_owned(font_data));
+                fonts
+                    .font_data
+                    .insert("msyh".to_owned(), egui::FontData::from_owned(font_data));
                 // 将 "msyh" 设置为首选的“比例字体”（大部分普通文本）
-                if let Some(proportional) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+                if let Some(proportional) = fonts.families.get_mut(&egui::FontFamily::Proportional)
+                {
                     proportional.insert(0, "msyh".to_owned());
                 }
                 // 将 "msyh" 也设置为首选的“等宽字体”（常用于代码显示）
@@ -371,7 +444,7 @@ fn main() -> Result<(), eframe::Error> {
                 }
             }
             cc.egui_ctx.set_fonts(fonts);
-            Box::<MyApp>::default()
+            Box::new(MyApp::new(cc))
         }),
     )
 }

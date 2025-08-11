@@ -12,7 +12,8 @@ tantivy-jieba = "0.16.0"
 opener = "0.7.1"
 
 # GUI Dependencies
-eframe = "0.27.2"
+eframe = { version = "0.27.2", features = ["persistence"] }
 rfd = "0.14.1"
 crossbeam-channel = "0.5.12"
+serde = { version = "1.0", features = ["derive"] }
 
