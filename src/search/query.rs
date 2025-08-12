@@ -1,17 +1,15 @@
 use crate::message::{AppMessage, SearchMessage};
+use crate::search::engine;
 use anyhow::{Context, Result};
 use crossbeam_channel::Sender;
-use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
 use tantivy::collector::TopDocs;
-use tantivy::directory::MmapDirectory;
 use tantivy::query::QueryParser;
 use tantivy::schema::Value;
 use tantivy::snippet::SnippetGenerator;
-use tantivy::tokenizer::TextAnalyzer;
-use tantivy::{Index, TantivyDocument};
-use tantivy_jieba::JiebaTokenizer;
-
-const INDEX_DIR: &str = "tantivy_index";
+use tantivy::TantivyDocument;
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
@@ -19,40 +17,47 @@ pub struct SearchResult {
     pub snippet_html: String,
 }
 
-pub fn search(query_str: &str, sender: Sender<AppMessage>) -> Result<()> {
-    let index_path = Path::new(INDEX_DIR);
-    if !index_path.exists() {
+pub fn search(
+    query_str: &str,
+    sender: Sender<AppMessage>,
+    cancel_token: Arc<AtomicBool>,
+) -> Result<()> {
+    let start_time = Instant::now();
+
+    // Lock the global index for reading.
+    let index_lock = match engine::INDEX.read() {
+        Ok(guard) => guard,
+        Err(_poisoned) => {
+            sender.send(AppMessage::Search(SearchMessage::Error(
+                "Index lock poisoned. Please restart or re-index.".to_string(),
+            )))?;
+            return Ok(());
+        }
+    };
+    let Some((index, reader)) = &*index_lock else {
         sender.send(AppMessage::Search(SearchMessage::Error(
             "Index not found. Please index a directory first.".to_string(),
         )))?;
         return Ok(());
-    }
+    };
 
-    let directory = MmapDirectory::open(index_path)?;
-    let index = Index::open(directory)?;
-
-    index
-        .tokenizers()
-        .register("jieba", TextAnalyzer::from(JiebaTokenizer {}));
-
-    let reader = index.reader()?;
     let searcher = reader.searcher();
     let schema = index.schema();
 
     let path_field = schema.get_field("path").context("Schema error: 'path' field not found")?;
     let content_field = schema.get_field("content").context("Schema error: 'content' field not found")?;
 
-    let query_parser = QueryParser::for_index(&index, vec![content_field]);
+    let query_parser = QueryParser::for_index(index, vec![content_field]);
     let query = query_parser.parse_query(query_str)?;
 
-    let top_docs = searcher.search(&query, &TopDocs::with_limit(20))?;
+    // Reduced the search limit to 100 for performance and stability.
+    let top_docs = searcher.search(&query, &TopDocs::with_limit(100))?;
 
     if top_docs.is_empty() {
-        let results = vec![SearchResult {
-            path: "No documents found matching your query.".to_string(),
-            snippet_html: "".to_string(),
-        }];
-        sender.send(AppMessage::Search(SearchMessage::Finished(results)))?;
+        sender.send(AppMessage::Search(SearchMessage::Finished {
+            results: Vec::new(), // Send a truly empty vector for no results.
+            duration: start_time.elapsed(),
+        }))?;
         return Ok(());
     }
 
@@ -61,6 +66,12 @@ pub fn search(query_str: &str, sender: Sender<AppMessage>) -> Result<()> {
 
     let mut results = Vec::new();
     for (_score, doc_address) in top_docs {
+        // Check for cancellation signal periodically.
+        if cancel_token.load(Ordering::SeqCst) {
+            sender.send(AppMessage::Search(SearchMessage::Cancelled))?;
+            return Ok(());
+        }
+
         let retrieved_doc: TantivyDocument = searcher.doc(doc_address)?;
         let snippet = snippet_generator.snippet_from_doc(&retrieved_doc);
 
@@ -76,7 +87,10 @@ pub fn search(query_str: &str, sender: Sender<AppMessage>) -> Result<()> {
         });
     }
 
-    sender.send(AppMessage::Search(SearchMessage::Finished(results)))?;
+    sender.send(AppMessage::Search(SearchMessage::Finished {
+        results,
+        duration: start_time.elapsed(),
+    }))?;
 
     Ok(())
 }

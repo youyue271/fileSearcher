@@ -1,5 +1,6 @@
 use crate::config::Theme;
 use crate::search::query::SearchResult;
+use std::time::Duration;
 
 // --- Module-specific messages ---
 
@@ -12,7 +13,11 @@ pub enum IndexMessage {
 
 #[derive(Debug)]
 pub enum SearchMessage {
-    Finished(Vec<SearchResult>),
+    Finished {
+        results: Vec<SearchResult>,
+        duration: Duration,
+    },
+    Cancelled,
     Error(String),
 }
 

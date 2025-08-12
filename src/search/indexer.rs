@@ -1,4 +1,5 @@
 use crate::message::{AppMessage, IndexMessage};
+use crate::search::engine;
 use crate::utils::file_utils;
 use anyhow::Result;
 use crossbeam_channel::Sender;
@@ -51,6 +52,8 @@ pub fn index_directory(path: &Path, sender: Sender<AppMessage>) -> Result<()> {
         .tokenizers()
         .register("jieba", TextAnalyzer::from(JiebaTokenizer {}));
     let mut index_writer = index.writer(50_000_000)?;
+    // Clear old index data
+    index_writer.delete_all_documents()?;
 
     // 3. Process and index each file
     for entry in WalkDir::new(path)
@@ -92,6 +95,15 @@ pub fn index_directory(path: &Path, sender: Sender<AppMessage>) -> Result<()> {
 
     index_writer.commit()?;
     println!("Indexing completed successfully.");
+
+    // After commit, load the index and reader into our static variable.
+    let reader = index.reader_builder().try_into()?;
+    let mut index_lock = match engine::INDEX.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    *index_lock = Some((index, reader));
+    println!("Index and reader loaded into memory.");
 
     // 5. Send finished signal
     sender.send(AppMessage::Index(IndexMessage::Finished))?;

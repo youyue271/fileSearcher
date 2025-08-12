@@ -10,7 +10,10 @@ use crate::search::query::SearchResult;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use eframe::egui;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 // Application-specific modules
 mod app_state;
@@ -34,7 +37,11 @@ struct MyApp {
     #[serde(skip)]
     search_results: Vec<SearchResult>,
     #[serde(skip)]
+    search_duration: Option<Duration>,
+    #[serde(skip)]
     state: AppState,
+    #[serde(skip)]
+    cancellation_token: Option<Arc<AtomicBool>>,
     settings: AppSettings,
 
     #[serde(skip)]
@@ -52,7 +59,9 @@ impl Default for MyApp {
             index_path: None,
             search_query: String::new(),
             search_results: Vec::new(),
+            search_duration: None,
             state: AppState::default(),
+            cancellation_token: None,
             settings: AppSettings::default(),
             sender,
             receiver,
@@ -114,21 +123,28 @@ impl eframe::App for MyApp {
                         self.state = AppState::Idle;
                     }
                 },
-                AppMessage::Search(search_msg) => match search_msg {
-                    // 搜索完成
-                    SearchMessage::Finished(results) => {
-                        self.search_results = results;
-                        self.state = AppState::Idle;
+                AppMessage::Search(search_msg) => {
+                    self.cancellation_token = None; // Clear token on any search result
+                    match search_msg {
+                        // 搜索完成
+                        SearchMessage::Finished { results, duration } => {
+                            self.search_results = results;
+                            self.search_duration = Some(duration);
+                            self.state = AppState::Idle;
+                        }
+                        SearchMessage::Cancelled => {
+                            self.state = AppState::Idle;
+                        }
+                        SearchMessage::Error(e) => {
+                            eprintln!("Search Error: {}", e);
+                            self.search_results = vec![SearchResult {
+                                path: e,
+                                snippet_html: "".to_string(),
+                            }];
+                            self.state = AppState::Idle;
+                        }
                     }
-                    SearchMessage::Error(e) => {
-                        eprintln!("Search Error: {}", e);
-                        self.search_results = vec![SearchResult {
-                            path: e,
-                            snippet_html: "".to_string(),
-                        }];
-                        self.state = AppState::Idle;
-                    }
-                },
+                }
                 AppMessage::Settings(settings_msg) => match settings_msg {
                     // 主题变更
                     SettingsMessage::ThemeChanged(theme) => {
@@ -229,12 +245,34 @@ impl eframe::App for MyApp {
                         self.state = AppState::Searching;
                         let query = self.search_query.clone();
                         let sender = self.sender.clone();
+                        let token = Arc::new(AtomicBool::new(false));
+                        self.cancellation_token = Some(token.clone());
+
                         // 多线程搜索
                         thread::spawn(move || {
-                            if let Err(e) = crate::search::query::search(&query, sender.clone()) {
-                                sender
-                                    .send(AppMessage::Search(SearchMessage::Error(e.to_string())))
-                                    .unwrap();
+                            let sender_clone = sender.clone();
+                            let result = std::panic::catch_unwind(move || {
+                                crate::search::query::search(&query, sender_clone, token)
+                            });
+
+                            match result {
+                                Ok(Ok(_)) => {
+                                    // Search completed successfully (sent its own message)
+                                }
+                                Ok(Err(e)) => {
+                                    // Search returned a normal error
+                                    sender
+                                        .send(AppMessage::Search(SearchMessage::Error(e.to_string())))
+                                        .unwrap();
+                                }
+                                Err(panic_payload) => {
+                                    // Search panicked
+                                    eprintln!("Search thread panicked: {:?}", panic_payload);
+                                    let error_msg = "A critical error occurred in the search engine, possibly due to a corrupt file.".to_string();
+                                    sender
+                                        .send(AppMessage::Search(SearchMessage::Error(error_msg)))
+                                        .unwrap();
+                                }
                             }
                         });
                     }
@@ -243,18 +281,23 @@ impl eframe::App for MyApp {
                 ui.separator();
 
                 // --- Status Display ---
-                match self.state {
+                match &self.state {
                     AppState::Idle => {
                         ui.label("状态: 空闲");
                     }
                     AppState::Indexing { progress } => {
-                        ui.add(egui::ProgressBar::new(progress).show_percentage());
+                        ui.add(egui::ProgressBar::new(*progress).show_percentage());
                         ui.label(format!("正在索引... {:.0}%", progress * 100.0));
                     }
                     AppState::Searching => {
                         ui.horizontal(|ui| {
                             ui.spinner();
                             ui.label("正在搜索...");
+                            if ui.button("停止").clicked() {
+                                if let Some(token) = &self.cancellation_token {
+                                    token.store(true, Ordering::SeqCst);
+                                }
+                            }
                         });
                     }
                 }
@@ -265,7 +308,14 @@ impl eframe::App for MyApp {
             let mut action = Action::None;
 
             // 结果部分
-            ui.heading("搜索结果");
+            ui.horizontal(|ui| {
+                ui.heading("搜索结果");
+                if let Some(duration) = self.search_duration {
+                    ui.label(
+                        egui::RichText::new(format!("({:.2?})", duration)).color(egui::Color32::GRAY),
+                    );
+                }
+            });
             ui.separator();
             egui::ScrollArea::vertical().show(ui, |ui| {
                 if self.search_results.is_empty() {

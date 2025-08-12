@@ -2545,6 +2545,7 @@ dependencies = [
  "crossbeam-channel",
  "docx-rust",
  "eframe",
+ "once_cell",
  "opener",
  "rfd",
  "serde",
